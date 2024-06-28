@@ -52,6 +52,8 @@ type TransferTxResult struct {
 	ToEntry       *Entries   `json:"toEntry"`
 }
 
+var TxKey = struct{}{}
+
 // TrasferTx creates a money trasnfer between accounts.
 // perfoms the following operations create a transfer record, create accounts entries and update account balances
 func (s *Store) TransferTx(ctx context.Context, arg TransferTxParams) (*TransferTxResult, error) {
@@ -87,7 +89,36 @@ func (s *Store) TransferTx(ctx context.Context, arg TransferTxParams) (*Transfer
 		}
 		txResults.ToEntry = &ToEntryResult
 
-		// TODO: update account balance
+		if arg.FromAcountId < arg.ToAcountId {
+			txResults.FromAccountId, txResults.ToAccountId, err = AddBalance(ctx, q,
+				AddBalanceParams{
+					AccountID: arg.FromAcountId,
+					Amount:    -arg.TransferAmount,
+				},
+				AddBalanceParams{
+					AccountID: arg.ToAcountId,
+					Amount:    arg.TransferAmount,
+				},
+			)
+			if err != nil {
+				return err
+			}
+		} else {
+			txResults.FromAccountId, txResults.ToAccountId, err = AddBalance(ctx, q,
+				AddBalanceParams{
+					AccountID: arg.ToAcountId,
+					Amount:    arg.TransferAmount,
+				},
+				AddBalanceParams{
+					AccountID: arg.FromAcountId,
+					Amount:    -arg.TransferAmount,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+		}
 		return nil
 	})
 	if err != nil {
@@ -95,4 +126,21 @@ func (s *Store) TransferTx(ctx context.Context, arg TransferTxParams) (*Transfer
 	}
 
 	return txResults, nil
+}
+
+func AddBalance(ctx context.Context,
+	q *Queries,
+	args ...AddBalanceParams,
+) (Accounts, Accounts, error) {
+	account1, err := q.AddBalance(ctx, args[0])
+	if err != nil {
+		return Accounts{}, Accounts{}, err
+	}
+
+	account2, err := q.AddBalance(ctx, args[1])
+	if err != nil {
+		return Accounts{}, Accounts{}, err
+	}
+
+	return account1, account2, nil
 }
